@@ -43,7 +43,7 @@ def train_classification_model(dataset_scaled, final_data, target_col ):
 
     print ("\n Classification report : \n",classification_report(y_test,predictions))
 
-    accuracy = accuracy_score(y_test,predictions)
+    accuracy = round(accuracy_score(y_test,predictions),2)
     print ("Accuracy   Score : ",accuracy)
     
     """

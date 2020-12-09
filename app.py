@@ -20,6 +20,9 @@ from pandas_profiling import ProfileReport
 import data_preprocessing as dp
 import model_train as mt
 import inference as inf
+import model_train_reg as mt_r
+import os, re, os.path
+
 
 # creates a Flask application, named app
 app = Flask(__name__)
@@ -58,6 +61,10 @@ ALLOWED_EXTENSIONS = set(["csv","xlsx","json"])
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def house_cleaning(path):
+    for root, dirs, files in os.walk(path):
+                for file in files:
+                    os.remove(os.path.join(root, file))
 
 
 ###############################################################################
@@ -197,8 +204,7 @@ def train_classifier():
         # Need to scale the data
         dataset_scaled = dp.feature_transformation(dataset_nan)
         print("Scaled Dataset:\n",dataset_scaled)
-        
-        
+
         # Now from here trainig starts
         final_data = dataset_scaled.copy()
         final_data[target_col] = target_var
@@ -219,19 +225,56 @@ def train_classifier():
 @app.route('/train_regressor', methods = ['GET', 'POST'])
 def train_regressor():
     if request.method == 'POST':
-        """
-        This API enable the user to train the Regressor model by utilising the file present
-        in the folder "uploads/train".
-        """
         training_path = "uploads/train"
-        dataset, feature_selected, fearure_info = file_readers(training_path)
+        dataset, feature_selected, feature_info = file_readers(training_path)
         """
         print("Dataset",dataset.head(3))
         print("feature_selected",feature_selected)
         print("fearure_info",fearure_info)
-
         """
-        return "Work in Progress"
+       
+        # Getting Important columns from Feature Selected.xlsx
+        selectedFeature = list(feature_selected[feature_selected["Required"] == True]["Feature Name"].values)
+        print("Feature Selected:", selectedFeature)
+
+        # Getting the feature information from Feature Info.json
+        ignore_cols = feature_info["ignore_cols"]
+        target_col = feature_info["target_col"]
+        print("\nIgnore Cols:", ignore_cols)
+        print("\nTarget Cols:", target_col)
+
+        # Will remove the duplicates in dataset
+        dataset_dup = dp.remove_duplicate_records(dataset)
+
+         # Dataset as per the client data
+        print("Before :Shape of Dataframe :", dataset.shape)
+
+        # Taking the selected features only after removal of duplicates.
+        target_var = dataset_dup[target_col]
+        dataset_dup = dataset_dup[selectedFeature].copy()
+       
+        print("Length of target variable:",len(target_var))
+        print("After :Shape of Dataframe after feature selection:", dataset_dup.shape)
+
+
+        # Will deal with NaN value in dataset
+        dataset_nan = dp.deal_with_nan(dataset_dup)
+        #print(dataset_nan.shape)
+
+        # Need to scale the data
+        dataset_scaled = dp.feature_transformation(dataset_nan)
+        print("Scaled Dataset:\n",dataset_scaled)
+
+        # Now from here trainig starts
+        final_data = dataset_scaled.copy()
+        final_data[target_col] = target_var
+        
+        print("*********************************************")
+        print(final_data.columns)
+        df_result_1 = mt_r.train_regression_model(dataset_scaled, final_data, target_col)
+
+        result = "Training is completed and MAPE is = " + str(df_result_1) + " %"
+        return result
     else:
         return "Only POST Method is allowed."
       
@@ -263,7 +306,7 @@ def evaluate_model():
                 elif "xlsx" in filename:
                     test_data = pd.read_excel(path)
         
-        #print(test_data)
+        print(test_data)
         
         training_path = "uploads/train"
         dataset, feature_selected, feature_info = file_readers(training_path)
@@ -282,11 +325,11 @@ def evaluate_model():
 
         # Performing the forecasting based on the saved model
         result = inf.perform_classification(dataset_scaled)
-        
-        path = "results/"
+        result_df = test_data.copy()
+        result_df['Predicted_values'] = result
         filename = "AiZen_Predicted_value.xlsx"
         filepath = path + filename
-        result.to_excel(filepath)
+        result_df.to_excel(filepath)
 
         return send_from_directory(path, filename, as_attachment=True)
 
@@ -294,10 +337,19 @@ def evaluate_model():
 @app.route('/refresh', methods = ['GET', 'POST'])
 def refresh():
     if request.method == 'POST':
-        # Need to worki on the Creation of model
-        
-        return "Work in Progress"
-
+        # Need to working on the Creation of model
+        DFProfie_path = "uploads/DFProfile"
+        Test_path = "uploads/test"
+        Train_path = "uploads/train"
+        result_path = "results/"
+        model_path = "model_config_file/"
+        house_cleaning(DFProfie_path)
+        house_cleaning(Test_path)
+        house_cleaning(Train_path)
+        house_cleaning(result_path)
+        house_cleaning(model_path)
+    
+        return render_template('index.html')
 # run the application
 if __name__ == "__main__":
     app.run()
